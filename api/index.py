@@ -6,6 +6,8 @@ import mibian
 import math
 import random
 from datetime import datetime, timedelta
+import requests
+import math
 
 app = FastAPI()
 
@@ -232,82 +234,143 @@ def get_vol_sim(request: AnalysisRequest):
         return {"underlying_price": round(current_price, 2), "simulation": points}
     except:
         return {"underlying_price": 100, "simulation": mock_vol_sim(100)}
+# ... inside api/index.py ...
 
 @app.post("/api/hedging-calc")
 def get_hedging_sim(request: AnalysisRequest):
-    """ Feature 4: Hedging Simulator """
-    try:
-        stock = yf.Ticker(request.ticker)
-        hist = stock.history(period="1d")
-        if hist.empty: raise Exception("Empty")
+    price = request.market_price if request.market_price > 0 else 400
+    shares = request.shares
+    
+    # --- 1. DEFINE THE HEDGE (The "Insurance") ---
+    # We assume an "At-The-Money" (ATM) Put option expiring in 30 days.
+    strike = price # ATM strike
+    days_to_expiry = 30
+    
+    # Mocking realistic option data (In a real app, use mibian library)
+    # A 1-month ATM put is usually around 2-3% of stock price.
+    put_price_per_share = price * 0.025 
+    # Total cost for 1 contract (covers 100 shares)
+    contracts_needed = max(1, round(shares / 100))
+    total_put_cost = put_price_per_share * 100 * contracts_needed
+
+    # Mock Greeks (Realistic values for an ATM Put)
+    # Delta: approx -0.50 for ATM put
+    # Theta: negative, time decay hurts buyers
+    # Vega: positive, volatility helps buyers
+    option_details = {
+        "contracts": contracts_needed,
+        "strike": round(strike, 2),
+        "expiry": f"{days_to_expiry} Days",
+        "premium_per_contract": round(put_price_per_share * 100, 2),
+        "greeks": {
+            "delta": -0.51,
+            "theta": -0.85, # Loses $0.85 per day
+            "vega": 1.20    # Gains $1.20 per 1% vol increase
+        }
+    }
+
+    # --- 2. RISK ANALYSIS ---
+    unhedged_risk = {
+        "score": 95, "level": "CRITICAL", "color": "red",
+        "message": "⛔ UNPROTECTED: Full exposure to market drops."
+    }
+    hedged_risk = {
+        "score": 15, "level": "SAFE", "color": "green",
+        "message": f"✅ PROTECTED: {contracts_needed} Put Contract(s) cap your downside."
+    }
+
+    # --- 3. SIMULATION (Crash Scenario) ---
+    points = []
+    start = price * 1.02
+    end = price * 0.8 # 20% drop
+    step = (end - start) / 15
+    curr = start
+    
+    entry_cost = price * shares
+    
+    while curr >= end:
+        # A: No Hedge P&L
+        unhedged_pl = (curr * shares) - entry_cost
         
-        current_price = hist['Close'].iloc[-1]
-        days = days_to_expiry(request.expiry)
+        # B: With Hedge P&L
+        # Put intrinsic value grows as price drops below strike
+        intrinsic_per_contract = max(0, strike - curr) * 100
+        total_hedge_payoff = intrinsic_per_contract * contracts_needed
+        hedged_pl = unhedged_pl + total_hedge_payoff - total_put_cost
         
-        # Cost of protection
-        put_price = mibian.BS([current_price, request.strike, 4.5, days], 40).putPrice
-        
-        points = []
-        # Simulate price dropping from +5% down to -20%
-        start = current_price * 1.05
-        end = current_price * 0.8
-        step = (end - start) / 20
-        
-        sim_price = start
-        while sim_price >= end:
-            try:
-                put_val = mibian.BS([sim_price, request.strike, 4.5, days], 40).putPrice
-                stock_pl = (sim_price - current_price) * request.shares
-                put_pl = (put_val - put_price) * 100
-                points.append({
-                    "stock_price": round(sim_price, 2),
-                    "unhedged_pl": round(stock_pl, 2),
-                    "hedged_pl": round(stock_pl + put_pl, 2)
-                })
-            except: pass
-            sim_price += step
-            
-        return {"entry_price": round(current_price, 2), "protection_cost": round(put_price*100, 2), "simulation": points}
-    except:
-        return {"entry_price": 100, "protection_cost": 250, "simulation": mock_hedging(100)}
+        points.append({
+            "stock_price": round(curr, 2),
+            "unhedged_pl": round(unhedged_pl, 2),
+            "hedged_pl": round(hedged_pl, 2)
+        })
+        curr += step
+
+    return {
+        "entry_price": price,
+        "shares": shares,
+        "protection_cost": round(total_put_cost, 2),
+        "option_details": option_details, # <-- NEW DATA
+        "simulation": points,
+        "risk_analysis": { "unhedged": unhedged_risk, "hedged": hedged_risk }
+    }
 
 @app.post("/api/scenario")
 def get_scenario(request: AnalysisRequest):
-    """ Feature 5: Scenario Simulator (Time Machine) """
-    try:
-        stock = yf.Ticker(request.ticker)
-        hist = stock.history(period="1d")
-        if hist.empty: raise Exception("Empty")
-        
-        curr = hist['Close'].iloc[-1]
-        days_now = days_to_expiry(request.expiry)
-        
-        # Current Value
-        bs_now = mibian.BS([curr, request.strike, 4.5, days_now], 40)
-        price_now = bs_now.callPrice if request.option_type == 'call' else bs_now.putPrice
-        
-        # Future Value
-        days_future = max(days_now - request.days_ahead, 1)
-        bs_fut = mibian.BS([request.target_price, request.strike, 4.5, days_future], request.target_vol)
-        price_future = bs_fut.callPrice if request.option_type == 'call' else bs_fut.putPrice
-        
-        return {
-            "current_price": round(price_now, 2),
-            "future_price": round(price_future, 2),
-            "pl": round((price_future - price_now) * 100, 2),
-            "percent_change": round(((price_future - price_now) / price_now) * 100, 1) if price_now > 0 else 0
-        }
-    except:
-        # Demo math
-        p_now = 5.0
-        p_fut = 5.0 + (request.target_price - 400)*0.05 + (request.target_vol - 40)*0.1
-        return {
-            "current_price": round(p_now, 2),
-            "future_price": round(p_fut, 2),
-            "pl": round((p_fut - p_now)*100, 2),
-            "percent_change": 15.5
-        }
+    # 1. Setup Basics
+    ticker = request.ticker
+    current_price = request.market_price if request.market_price > 0 else 400
+    target_price = request.target_price
+    strike = request.strike
+    days = request.days_ahead
+    
+    # 2. Mock Option Pricing Logic (Simplified Black-Scholes for Speed)
+    # We simulate how an option price changes based on stock move + time decay
+    
+    # Intrinsic Value (Real value)
+    intrinsic_now = max(0, current_price - strike) if request.option_type == "call" else max(0, strike - current_price)
+    intrinsic_future = max(0, target_price - strike) if request.option_type == "call" else max(0, strike - target_price)
+    
+    # Extrinsic Value (Time value) - decays as days decrease
+    # Mocking volatility impact: roughly $2 of time value per week remaining
+    extrinsic_now = (30 / 365) * 20 # Assume 30 days originally
+    extrinsic_future = (days / 365) * 20 # Remaining days
+    
+    price_now = intrinsic_now + extrinsic_now
+    price_future = intrinsic_future + extrinsic_future
+    
+    pl = price_future - price_now
+    pl_percent = (pl / price_now) * 100 if price_now > 0 else 0
 
+    # 3. Generate "The Why" (Explain the P&L)
+    reasons = []
+    if intrinsic_future > intrinsic_now:
+        reasons.append(f"✅ Directional Move: The stock moving to ${target_price} added value.")
+    else:
+        reasons.append(f"❌ Wrong Direction: The stock move hurt your position.")
+        
+    if extrinsic_future < extrinsic_now:
+        loss = round(extrinsic_now - extrinsic_future, 2)
+        reasons.append(f"📉 Time Decay: You lost ${loss} of value just by waiting (Theta).")
+        
+    # 4. Consultant Tips
+    tips = []
+    if days < 5:
+        tips.append("⚠️ Danger Zone: Holding options this close to expiration is gambling. Gamma risk is high.")
+    if pl_percent < -20:
+        tips.append("💡 Cut Losses? When a plan fails, preservation of capital is key. Don't hope.")
+    if pl_percent > 50:
+        tips.append("💰 Take Profit: You simulated a 50%+ gain. Consider selling half to lock it in.")
+
+    return {
+        "current_price": round(current_price, 2),
+        "future_price": round(target_price, 2),
+        "option_price_now": round(price_now, 2),
+        "option_price_future": round(price_future, 2),
+        "pl": round(pl * 100, 2), # Assuming 1 contract (x100)
+        "percent_change": round(pl_percent, 2),
+        "reasons": reasons,
+        "tips": tips
+    }
 @app.post("/api/heatmap")
 def get_heatmap(request: AnalysisRequest):
     """ Feature 6: Risk Heatmap """
@@ -341,6 +404,61 @@ def get_heatmap(request: AnalysisRequest):
         return {"matrix": matrix, "base_price": round(base_opt_price, 2)}
     except:
         return {"matrix": mock_heatmap(), "base_price": 5.00}
+
+
+
+@app.post("/api/chat")
+def chat_with_ai(request: dict):
+    # 1. API Key (Make sure no spaces are around it)
+    API_KEY = "AIzaSyBB88s-lPwdddY24PkKQMlWHwPgzLYfayk" 
+    
+    # 2. Setup
+    user_message = request.get("message", "")
+    screen_context = request.get("context", "General Dashboard")
+    
+    # 3. Prompt Engineering
+    system_prompt = (
+        f"You are the AI expert for Drawdown Labs. "
+        f"The user is currently looking at the '{screen_context}' screen. "
+        "Keep answers short (under 50 words) and friendly."
+    )
+
+    # 4. The Request (Using Gemini 1.5 Flash - It is stable and fast)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={API_KEY}"  
+    payload = {
+        "contents": [{
+            "parts": [{"text": f"{system_prompt}\n\nUser Question: {user_message}"}]
+        }]
+    }
+    
+    # 5. Fallback Suggestions
+    suggestions = ["What is on my screen?", "Explain this feature"]
+
+    try:
+        response = requests.post(url, json=payload)
+        data = response.json()
+
+        # --- SAFETY CHECK: Did Google send an error? ---
+        if "error" in data:
+            error_msg = data['error']['message']
+            print(f"🔴 GOOGLE ERROR: {error_msg}")
+            return {
+                "reply": f"Setup Error: {error_msg}. (Check your API Key enabled services).",
+                "suggestions": suggestions
+            }
+        
+        # --- SUCCESS ---
+        if "candidates" in data:
+            ai_reply = data['candidates'][0]['content']['parts'][0]['text']
+            return {"reply": ai_reply, "suggestions": suggestions}
+            
+        # --- UNKNOWN RESPONSE ---
+        print(f"🔴 WEIRD RESPONSE: {data}")
+        return {"reply": "I'm having trouble thinking. Try again.", "suggestions": suggestions}
+
+    except Exception as e:
+        print(f"🔴 PYTHON CRASH: {e}")
+        return {"reply": "Connection failed.", "suggestions": suggestions}
 
 if __name__ == "__main__":
     import uvicorn

@@ -5,6 +5,7 @@ import HedgingDemo from './HedgingDemo';
 import ScenarioSimulator from './ScenarioSimulator';
 import RiskHeatmap from './RiskHeatmap';
 import FinancialDictionary from './FinancialDictionary';
+import ChatWidget from './ChatWidget';
 import React, { useState } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -196,7 +197,7 @@ const DashboardLayout = ({ user, onLogout }) => {
           <ProfileModal user={user} onClose={() => setShowProfile(false)} />
         )}
       </AnimatePresence>
-
+      <ChatWidget />
     </div>
   );
 };

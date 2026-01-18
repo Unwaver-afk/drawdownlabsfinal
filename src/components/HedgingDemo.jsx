@@ -1,136 +1,176 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  CartesianGrid, ReferenceLine, Legend 
-} from 'recharts';
-import { ShieldCheck, Activity, PlayCircle, Calendar, AlertTriangle } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, TrendingDown, Play, Activity } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
-const HedgingDemo = () => {
-  const [ticker, setTicker] = useState('SPY');
-  const [strike, setStrike] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [availableExpiries, setAvailableExpiries] = useState([]);
+const HedgingSimulator = () => {
   const [loading, setLoading] = useState(false);
-  const [simData, setSimData] = useState(null);
+  const [data, setData] = useState(null);
+  
+  const [inputs, setInputs] = useState({
+    price: 450,
+    shares: 100
+  });
 
-  // Initialize
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const res = await fetch(`/api/stock/${ticker}`);
-        const data = await res.json();
-        if (data.current_price) {
-          // Default strike: 5% below current price (OTM Put)
-          if (!strike) setStrike(Math.floor(data.current_price * 0.95));
-          if (data.expirations?.length > 0) {
-            setAvailableExpiries(data.expirations);
-            if (!expiry) setExpiry(data.expirations[0]);
-          }
-        }
-      } catch (e) {}
-    };
-    if (ticker.length >= 2) init();
-  }, [ticker]);
+  useEffect(() => { runSimulation(); }, []);
 
-  // Run Hedging Sim
   const runSimulation = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/hedging-calc', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          ticker, 
-          strike: parseFloat(strike), 
-          expiry, 
-          option_type: 'put', // We are buying a Put
-          shares: 100         // Assume standard lot
-        })
+        body: JSON.stringify({ ticker: "SPY", market_price: inputs.price, shares: inputs.shares })
       });
-      const data = await res.json();
-      setSimData(data);
+      const json = await res.json();
+      setData(json);
     } catch (e) { console.error(e); }
     setLoading(false);
   };
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8 pb-20">
-      
-      {/* HEADER */}
-      <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex flex-col xl:flex-row justify-between items-end gap-6 shadow-2xl">
-        <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3 mb-2">
-            <ShieldCheck className="text-emerald-400" size={32} /> Hedging Simulator
-          </h1>
-          <p className="text-slate-400">
-            See how buying a <strong>Put Option</strong> protects your portfolio from a crash.
-          </p>
-        </div>
+  const handleInput = (field, value) => {
+    setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
+  };
 
-        {/* CONTROLS */}
-        <div className="flex flex-wrap items-center gap-2 bg-slate-950 p-3 rounded-xl border border-slate-700 w-full xl:w-auto">
-          <input value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())} className="bg-slate-800 border border-slate-600 rounded-md px-3 py-2 text-white font-bold w-24 outline-none" placeholder="TICKER" />
-          <input type="number" value={strike} onChange={e => setStrike(e.target.value)} className="bg-slate-800 border border-slate-600 rounded-md px-3 py-2 text-white font-bold w-24 outline-none" placeholder="STRIKE" />
-          <select value={expiry} onChange={e => setExpiry(e.target.value)} className="bg-slate-800 border border-slate-600 rounded-md px-3 py-2 text-white font-bold w-32 outline-none cursor-pointer">
-            {availableExpiries.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
-          <button onClick={runSimulation} className="bg-emerald-600 hover:bg-emerald-500 text-white h-[42px] px-6 rounded-lg font-bold ml-2 flex items-center gap-2 transition-all">
-            {loading ? <Activity className="animate-spin" /> : <PlayCircle />} Simulate
+  const RiskBar = ({ score, color }) => (
+    <div className="w-full h-4 bg-slate-800 rounded-full mt-2 overflow-hidden border border-slate-700">
+      <div className={`h-full transition-all duration-1000 ${color === 'red' ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${score}%` }}></div>
+    </div>
+  );
+
+  // Helper for data points
+  const DataPoint = ({ label, value, color = "text-white" }) => (
+    <div className="flex flex-col">
+      <span className="text-[10px] text-slate-500 uppercase font-bold">{label}</span>
+      <span className={`font-mono text-lg ${color}`}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div className="p-8 space-y-8 animate-in fade-in pb-24 w-full max-w-7xl mx-auto">
+      
+      {/* HEADER & CONTROLS CONTAINER */}
+      <div className="flex flex-col md:flex-row justify-between gap-6 items-end bg-slate-900/50 p-6 rounded-2xl border border-slate-800 backdrop-blur-sm">
+        <div>
+          <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+            <Shield className="text-blue-400" /> Portfolio Protection Lab
+          </h2>
+          <p className="text-slate-400 mt-1">Simulate insurance against market crashes.</p>
+        </div>
+        
+        {/* BIG VISIBLE CONTROLS */}
+        <div className="flex gap-4 items-end w-full md:w-auto">
+          <div>
+            <label className="text-xs text-slate-500 font-bold uppercase">Stock Price ($)</label>
+            <input type="number" value={inputs.price} onChange={(e) => handleInput('price', e.target.value)}
+              className="w-full md:w-32 bg-slate-950 border border-slate-700 rounded-lg p-3 text-white mt-1 outline-none font-mono focus:border-blue-500 transition-colors"/>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 font-bold uppercase">Shares Owned</label>
+            <input type="number" value={inputs.shares} onChange={(e) => handleInput('shares', e.target.value)}
+              className="w-full md:w-32 bg-slate-950 border border-slate-700 rounded-lg p-3 text-white mt-1 outline-none font-mono focus:border-blue-500 transition-colors"/>
+          </div>
+          
+          {/* THE BIG BUTTON */}
+          <button 
+            onClick={runSimulation} 
+            disabled={loading}
+            className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-lg transition-all shadow-lg flex items-center gap-2 font-bold disabled:opacity-50"
+          >
+            {loading ? (
+              <>Calculating...</>
+            ) : (
+              <> <Play size={18} fill="currentColor" /> Run Simulation </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* CHART */}
-      {simData && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl h-96">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={simData.simulation} margin={{ left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis dataKey="stock_price" reversed={true} label={{ value: 'Stock Price (Falling →)', position: 'insideBottom', offset: -5, fill: '#64748b' }} />
-                <YAxis label={{ value: 'Portfolio P&L ($)', angle: -90, position: 'insideLeft', fill: '#64748b' }} />
-                <Tooltip contentStyle={{backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff'}} />
-                <Legend verticalAlign="top" height={36}/>
-                <ReferenceLine y={0} stroke="white" strokeDasharray="3 3" />
-                
-                {/* RED LINE: UNHEDGED */}
-                <Line name="Unhedged (Loss)" type="monotone" dataKey="unhedged_pl" stroke="#ef4444" strokeWidth={3} dot={false} />
-                
-                {/* GREEN LINE: HEDGED */}
-                <Line name="Hedged (Protected)" type="monotone" dataKey="hedged_pl" stroke="#10b981" strokeWidth={4} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* STATS PANEL */}
-          <div className="space-y-4">
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-5">
-              <h3 className="text-slate-400 text-sm font-bold uppercase mb-4">Protection Analysis</h3>
-              
-              <div className="mb-4">
-                <div className="text-slate-500 text-xs">Cost of Insurance (Put Option)</div>
-                <div className="text-xl font-mono text-red-400">-${simData.protection_cost}</div>
-              </div>
-              
-              <div className="mb-4">
-                <div className="text-slate-500 text-xs">Entry Price</div>
-                <div className="text-xl font-mono text-white">${simData.entry_price}</div>
-              </div>
-
-              <div className="p-3 bg-emerald-900/20 border border-emerald-500/30 rounded-lg">
-                <div className="flex gap-2 text-emerald-400 text-sm font-bold items-center">
-                   <ShieldCheck size={16} /> Protection Active
+      {data && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          {/* --- DANGER CARD --- */}
+          <div className="bg-slate-900 border border-rose-500/30 rounded-2xl p-6 relative overflow-hidden shadow-xl flex flex-col justify-between">
+            <div>
+                 <div className="absolute top-0 right-0 p-3 opacity-10"><ShieldAlert size={120} className="text-rose-500"/></div>
+                <h3 className="text-rose-400 font-bold flex items-center gap-2 mb-4 text-lg"><ShieldAlert size={24}/> UNHEDGED PORTFOLIO</h3>
+                <div className="mb-6 z-10 relative">
+                <div className="flex justify-between items-end mb-1">
+                    <span className="text-xs text-slate-400 uppercase">Risk Exposure</span>
+                    <span className="text-3xl font-black text-rose-500">{data.risk_analysis.unhedged.score}/100</span>
                 </div>
-                <p className="text-xs text-emerald-200/70 mt-1">
-                  If the stock crashes to $0, your maximum loss is capped.
-                </p>
-              </div>
+                <RiskBar score={data.risk_analysis.unhedged.score} color="red" />
+                <p className="text-xs text-rose-200 mt-3 bg-rose-500/20 p-3 rounded-lg border border-rose-500/30">{data.risk_analysis.unhedged.message}</p>
+                </div>
+            </div>
+            <div className="text-center p-4 bg-black/20 rounded-xl z-10 relative">
+              <div className="text-slate-500 text-xs uppercase tracking-widest">If Market Crashes 20%</div>
+              <div className="text-4xl font-black text-rose-500 my-1">-${(data.entry_price * data.shares * 0.20).toLocaleString()}</div>
+              <div className="text-xs text-rose-400 font-bold">You take the full hit.</div>
             </div>
           </div>
+
+          {/* --- SAFE CARD (With Greeks) --- */}
+          <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-6 relative overflow-hidden shadow-xl">
+            <div className="absolute top-0 right-0 p-3 opacity-10"><ShieldCheck size={120} className="text-emerald-500"/></div>
+            <h3 className="text-emerald-400 font-bold flex items-center gap-2 mb-4 text-lg"><ShieldCheck size={24}/> HEDGED (Protective Puts)</h3>
+            
+            {/* Risk Meter */}
+            <div className="mb-6 z-10 relative">
+              <div className="flex justify-between items-end mb-1">
+                <span className="text-xs text-slate-400 uppercase">Risk Exposure</span>
+                <span className="text-3xl font-black text-emerald-500">{data.risk_analysis.hedged.score}/100</span>
+              </div>
+              <RiskBar score={data.risk_analysis.hedged.score} color="green" />
+            </div>
+
+            {/* Option Details Grid */}
+            <div className="bg-black/30 p-4 rounded-xl border border-slate-800 backdrop-blur-sm z-10 relative mb-4">
+                <h4 className="text-xs text-emerald-400 font-bold flex items-center gap-2 mb-3 border-b border-slate-800 pb-2">
+                    <Activity size={14}/> INSURANCE CONTRACT DETAILS
+                </h4>
+                <div className="grid grid-cols-3 gap-4">
+                    <DataPoint label="Contracts" value={data.option_details.contracts} />
+                    <DataPoint label="Strike Price" value={`$${data.option_details.strike}`} />
+                    <DataPoint label="Expiry" value={data.option_details.expiry} />
+                    <DataPoint label="Delta" value={data.option_details.greeks.delta} color="text-blue-400" />
+                    <DataPoint label="Theta" value={data.option_details.greeks.theta} color="text-rose-400" />
+                    <DataPoint label="Cost" value={`$${data.protection_cost.toLocaleString()}`} color="text-yellow-400" />
+                </div>
+            </div>
+
+            <div className="text-center p-4 bg-black/20 rounded-xl z-10 relative">
+              <div className="text-slate-500 text-xs uppercase tracking-widest">If Market Crashes 20%</div>
+              <div className="text-4xl font-black text-white my-1">-${data.protection_cost.toLocaleString()}</div>
+              <div className="text-xs text-emerald-400 font-bold">Loss is capped at cost of insurance.</div>
+            </div>
+          </div>
+          
         </div>
       )}
+
+      {/* GRAPH */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-lg">
+        <h3 className="text-white font-bold mb-6 flex items-center gap-2">
+          <TrendingDown className="text-blue-400"/> Crash Simulation (Visual)
+        </h3>
+        <div className="h-[350px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data?.simulation} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey="stock_price" stroke="#64748b" reversed={true}
+                label={{ value: 'Stock Price (Crashing)', position: 'bottom', offset: 0, fill: '#64748b' }} height={50}/>
+              <YAxis stroke="#64748b" 
+                label={{ value: 'Portfolio P&L ($)', angle: -90, position: 'insideLeft', fill: '#64748b' }}/>
+              <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff' }} itemStyle={{ color: '#fff' }}/>
+              <Legend verticalAlign="top" height={36}/>
+              <Line type="monotone" dataKey="unhedged_pl" name="Danger (No Hedge)" stroke="#f43f5e" strokeWidth={3} dot={false} />
+              <Line type="monotone" dataKey="hedged_pl" name="Safe (With Puts)" stroke="#10b981" strokeWidth={3} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default HedgingDemo;
+export default HedgingSimulator;
