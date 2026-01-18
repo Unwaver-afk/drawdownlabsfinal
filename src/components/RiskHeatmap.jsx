@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Grid, Calendar, TrendingUp, Info, X, MousePointer2, ArrowRight } from 'lucide-react';
+import { Grid, Calendar, TrendingUp, Info, X, MousePointer, ArrowRight } from 'lucide-react';
 
 const RiskHeatmap = () => {
   const [data, setData] = useState(null);
@@ -88,7 +88,7 @@ const RiskHeatmap = () => {
           </button>
           <div className="flex gap-4">
             <div className="bg-blue-500/20 p-3 rounded-xl h-fit">
-              <MousePointer2 className="text-blue-400" size={24} />
+              <MousePointer className="text-blue-400" size={24} />
             </div>
             <div>
               <h3 className="text-lg font-bold text-white mb-1">How to read this map?</h3>

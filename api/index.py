@@ -371,42 +371,82 @@ def get_scenario(request: AnalysisRequest):
         "reasons": reasons,
         "tips": tips
     }
+# ... inside api/index.py ...
+
 @app.post("/api/heatmap")
 def get_heatmap(request: AnalysisRequest):
-    """ Feature 6: Risk Heatmap """
-    try:
-        stock = yf.Ticker(request.ticker)
-        hist = stock.history(period="1d")
-        if hist.empty: raise Exception("Empty")
+    # 1. Setup Ranges (X-Axis and Y-Axis)
+    current_price = request.market_price if request.market_price > 0 else 400
+    strike = request.strike
+    
+    # X-Axis: Price ranges from -10% to +10%
+    # We create 11 data points: -10%, -8%, ..., 0%, ..., +10%
+    price_steps = []
+    for i in range(-10, 11, 2): 
+        price_steps.append(current_price * (1 + (i/100)))
 
-        curr = hist['Close'].iloc[-1]
-        days = days_to_expiry(request.expiry)
-        
-        # Base Price
-        bs_base = mibian.BS([curr, request.strike, 4.5, days], 40)
-        base_opt_price = bs_base.callPrice if request.option_type == 'call' else bs_base.putPrice
-        
-        matrix = []
-        for vol in range(30, 55, 5):
-            row = []
-            for price_mult in [0.9, 0.95, 1.0, 1.05, 1.1]:
-                sim_price = curr * price_mult
-                bs = mibian.BS([sim_price, request.strike, 4.5, days], vol)
-                opt_price = bs.callPrice if request.option_type == 'call' else bs.putPrice
-                pl = (opt_price - base_opt_price) * 100
-                row.append({
-                    "stock_price": round(sim_price, 2),
-                    "vol": vol,
-                    "pl": round(pl, 0)
-                })
-            matrix.append(row)
+    # Y-Axis: Time ranges from "Days Left" down to 0 (Expiry)
+    # We create 5 steps (e.g., 30, 22, 15, 7, 0)
+    start_days = request.days_ahead if request.days_ahead > 0 else 30
+    days_steps = [
+        int(start_days),
+        int(start_days * 0.75),
+        int(start_days * 0.50),
+        int(start_days * 0.25),
+        0
+    ]
+    
+    heatmap_data = []
+
+    # 2. Build the Grid (The Nested Loop)
+    for day in days_steps:
+        row_values = []
+        for sim_price in price_steps:
             
-        return {"matrix": matrix, "base_price": round(base_opt_price, 2)}
-    except:
-        return {"matrix": mock_heatmap(), "base_price": 5.00}
+            # --- MOCK OPTION PRICING LOGIC ---
+            # Intrinsic Value (Real Money)
+            if request.option_type == "call":
+                intrinsic = max(0, sim_price - strike)
+            else:
+                intrinsic = max(0, strike - sim_price)
+            
+            # Extrinsic Value (Time Money)
+            # Logic: Time value decays as 'day' gets closer to 0.
+            # It also decreases if price moves far away from strike (Deep ITM/OTM).
+            time_factor = (day / 30) 
+            dist_percent = abs(sim_price - strike) / strike
+            moneyness_factor = max(0, 1 - (dist_percent * 5)) # Decays quickly away from ATM
+            
+            # Assume max extrinsic value is ~$5.00
+            extrinsic = 5.0 * time_factor * moneyness_factor
+            
+            sim_option_price = intrinsic + extrinsic
+            
+            # Calculate Profit/Loss vs an estimated Entry Cost
+            # We estimate entry cost based on the CURRENT parameters (start of sim)
+            # (In a real app, you'd calculate this once outside the loop)
+            entry_intrinsic = max(0, current_price - strike) if request.option_type == "call" else max(0, strike - current_price)
+            entry_extrinsic = 5.0 * (start_days/30) * max(0, 1 - (abs(current_price-strike)/strike * 5))
+            entry_cost = entry_intrinsic + entry_extrinsic
+            
+            pl = sim_option_price - entry_cost
+            
+            row_values.append({
+                "price": round(sim_price, 2),
+                "pl": round(pl * 100, 2) # Assuming 100 shares (1 contract)
+            })
+            
+        heatmap_data.append({
+            "days_left": day, 
+            "values": row_values
+        })
 
-
-
+    # 3. Return the Data Structure expected by Frontend
+    return {
+        "matrix": heatmap_data,
+        "x_labels": [f"{i}%" for i in range(-10, 11, 2)], # Labels: -10%, -8%, etc.
+        "y_labels": days_steps
+    }
 @app.post("/api/chat")
 def chat_with_ai(request: dict):
     # 1. API Key (Make sure no spaces are around it)
@@ -418,10 +458,17 @@ def chat_with_ai(request: dict):
     
     # 3. Prompt Engineering
     system_prompt = (
-        f"You are the AI expert for Drawdown Labs. "
-        f"The user is currently looking at the '{screen_context}' screen. "
-        "Keep answers short (under 50 words) and friendly."
-    )
+        
+    f"Hello! I am Doody, your friendly financial manager at Drawdown Labs 😊 "
+    f"Ask anything on your mind . "
+    "Keep answers very simple, friendly, and easy to understand for beginners. "
+    "Be helpful, calm, and supportive. "
+    "Keep responses short (under 50 words). "
+    "Start conversations with: "
+    "'Hello, I am Doody, your financial manager. How can I help you today?'"
+     )
+
+    
 
     # 4. The Request (Using Gemini 1.5 Flash - It is stable and fast)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={API_KEY}"  

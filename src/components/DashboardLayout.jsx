@@ -99,9 +99,28 @@ const DashboardLayout = ({ user, onLogout }) => {
       
       {/* --- Sidebar --- */}
       <motion.div 
-        animate={{ width: isOpen ? 260 : 80 }}
-        className="h-full bg-slate-900/50 backdrop-blur-xl border-r border-slate-800 flex flex-col relative z-20 transition-all duration-300 shadow-xl"
-      >
+  animate={{ width: isOpen ? 260 : 80 }}
+  transition={{
+    duration: 0.45,
+    ease: [0.4, 0.0, 0.2, 1], 
+    ease: 'easeInOut'// Material-style smooth easing
+  }}
+  className="
+    h-[calc(100%-2rem)]
+    m-4
+    bg-slate-900/75
+    backdrop-blur-xl
+    rounded-2xl
+    border border-slate-800
+    flex flex-col
+    relative z-20
+    shadow-xl shadow-blue-900/30
+    ring-1 ring-blue-500/10
+    will-change-[width]
+  "
+>
+
+
         {/* Logo Area */}
         <div className="p-5 flex items-center justify-between h-20">
           <AnimatePresence mode='wait'>
@@ -112,7 +131,7 @@ const DashboardLayout = ({ user, onLogout }) => {
                 exit={{ opacity: 0 }}
                 className="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400"
               >
-                Drawdown
+                Drawdown Labs
               </motion.span>
             )}
           </AnimatePresence>
@@ -136,17 +155,34 @@ const DashboardLayout = ({ user, onLogout }) => {
                   flex items-center gap-4 px-3 py-3 rounded-xl transition-all group relative overflow-hidden
                   ${isActive ? 'bg-blue-600/10 text-blue-400 border border-blue-600/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
                 `}>
-                  {isActive && (
-                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-l-xl" />
-                  )}
+                  <AnimatePresence>
+  {isActive && (
+    <motion.div
+      layoutId="activeIndicator"
+      className="absolute left-0 top-2 bottom-2 w-1 bg-blue-500 rounded-l-xl"
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+    />
+  )}
+</AnimatePresence>
+
                   <Icon size={22} className={isActive ? 'text-blue-400' : 'group-hover:text-white transition-colors'} />
                   
                   {/* Text Label (Only shows when open) */}
-                  {isOpen && (
-                    <span className="text-sm font-medium whitespace-nowrap animate-in fade-in duration-200">
-                      {item.label}
-                    </span>
-                  )}
+                  <AnimatePresence>
+  {isOpen && (
+    <motion.span
+      key="label"
+      initial={{ opacity: 0, x: -6 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -6 }}
+      transition={{ duration: 0.2 }}
+      className="text-sm font-medium whitespace-nowrap"
+    >
+      {item.label}
+    </motion.span>
+  )}
+</AnimatePresence>
+
                 </div>
               </Link>
             );
@@ -160,7 +196,7 @@ const DashboardLayout = ({ user, onLogout }) => {
             className="w-full flex items-center gap-4 px-3 py-3 text-slate-400 hover:text-red-400 hover:bg-red-950/30 rounded-xl transition-colors group"
           >
             <LogOut size={22} className="group-hover:text-red-400 transition-colors" />
-            {isOpen && <span className="text-sm font-medium">Disconnect</span>}
+            {isOpen && <span className="text-sm font-medium">Log out</span>}
           </button>
         </div>
       </motion.div>
@@ -203,3 +239,4 @@ const DashboardLayout = ({ user, onLogout }) => {
 };
 
 export default DashboardLayout;
+

@@ -44,6 +44,7 @@ const HedgingSimulator = () => {
       <span className={`font-mono text-lg ${color}`}>{value}</span>
     </div>
   );
+  
 
   return (
     <div className="p-8 space-y-8 animate-in fade-in pb-24 w-full max-w-7xl mx-auto">
