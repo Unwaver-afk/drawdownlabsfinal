@@ -7,7 +7,7 @@ const ChatWidget = () => {
   const location = useLocation(); // Detects which page the user is on
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { text: "Hi! I'm the Drawdown AI. I can see your screen. How can I help?", sender: 'ai' }
+    { text: "Hi, I am Doody, your financial manager at Drawdown Labs. Ask me anything about this screen.", sender: 'ai' }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);

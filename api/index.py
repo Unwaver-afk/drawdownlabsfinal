@@ -510,15 +510,33 @@ def chat_with_ai(request: dict):
     api_key = os.getenv("GEMINI_API_KEY", "")
     suggestions = ["What is on my screen?", "Explain this feature"]
     
-    user_message = request.get("message", "")
-    screen_context = request.get("context", "General Dashboard")
+    user_message = request.get("message", "").strip()
+    screen_context = request.get("context", "General Dashboard").strip()
+    is_intro_question = any(
+        phrase in user_message.lower()
+        for phrase in ["who are you", "your name", "what is your name", "introduce", "hello", "hi", "hey"]
+    )
     
     system_prompt = (
-        "You are Doody, the friendly financial manager at Drawdown Labs. "
-        "Keep answers simple, friendly, calm, and beginner-friendly. "
-        "Keep responses under 50 words. "
-        f"The user is currently viewing: {screen_context}."
+        "You are Doody, the AI financial manager inside Drawdown Labs. "
+        "Your name is Doody. Do not call yourself Gemini, Google, an AI model, or Drawdown AI. "
+        "If the user greets you, asks who you are, or asks your name, start with exactly: "
+        "'Hi, I am Doody, your financial manager at Drawdown Labs.' "
+        "For other answers, mention Doody only when it feels natural; do not repeat your full introduction every time. "
+        "Use the current screen context to explain what the user is seeing. "
+        "Keep answers calm, friendly, beginner-friendly, and under 50 words. "
+        "Avoid financial advice; explain concepts and risks instead. "
+        f"Current screen: {screen_context}."
     )
+
+    if is_intro_question and len(user_message.split()) <= 8:
+        return {
+            "reply": (
+                "Hi, I am Doody, your financial manager at Drawdown Labs. "
+                f"You are viewing {screen_context}. Ask me anything about this screen."
+            ),
+            "suggestions": suggestions
+        }
 
     if not api_key:
         return {"reply": "AI chat is not configured yet.", "suggestions": suggestions}
@@ -559,4 +577,4 @@ def chat_with_ai(request: dict):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
