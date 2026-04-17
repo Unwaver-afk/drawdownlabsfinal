@@ -5,6 +5,7 @@ import yfinance as yf
 import mibian
 import math
 import os
+import re
 import time
 from datetime import datetime, timedelta
 import requests
@@ -14,6 +15,16 @@ cache = {}
 
 STOCK_CACHE_SECONDS = 300
 CHAIN_CACHE_SECONDS = 600
+CBOE_CACHE_SECONDS = 120
+
+CBOE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0 Safari/537.36"
+    ),
+    "Accept": "application/json,text/plain,*/*",
+}
 
 
 def load_local_env(path=".env"):
@@ -55,6 +66,144 @@ def compact_chart_data(hist, max_points=90):
         {"date": i.strftime("%Y-%m-%d"), "price": round(float(r["Close"]), 2)}
         for i, r in hist.iterrows()
     ]
+
+
+def cboe_symbol(ticker):
+    return ticker.upper().strip().replace(".", "_").replace("-", "_")
+
+
+def fetch_cboe_snapshot(ticker):
+    ticker = cboe_symbol(ticker)
+    cached = get_cached(("cboe", ticker))
+    if cached:
+        return cached
+
+    url = f"https://cdn.cboe.com/api/global/delayed_quotes/options/{ticker}.json"
+    response = requests.get(url, headers=CBOE_HEADERS, timeout=12)
+    response.raise_for_status()
+    payload = response.json().get("data", {})
+    if not payload.get("current_price") or not payload.get("options"):
+        raise ValueError(f"Cboe returned no option data for {ticker}")
+    return set_cached(("cboe", ticker), payload, CBOE_CACHE_SECONDS)
+
+
+def parse_occ_option(option_symbol):
+    match = re.match(r"^(.+?)(\d{6})([CP])(\d{8})$", option_symbol or "")
+    if not match:
+        return None
+
+    _, expiry_raw, option_type, strike_raw = match.groups()
+    expiry = datetime.strptime(expiry_raw, "%y%m%d").strftime("%Y-%m-%d")
+    return {
+        "expiry": expiry,
+        "type": "call" if option_type == "C" else "put",
+        "strike": int(strike_raw) / 1000,
+    }
+
+
+def cboe_expirations(snapshot):
+    today = datetime.now().date()
+    expirations = set()
+    for option in snapshot.get("options", []):
+        parsed = parse_occ_option(option.get("option"))
+        if not parsed:
+            continue
+        expiry_date = datetime.strptime(parsed["expiry"], "%Y-%m-%d").date()
+        if expiry_date >= today:
+            expirations.add(parsed["expiry"])
+    return sorted(expirations)[:12]
+
+
+def cboe_chart_data(snapshot):
+    raw_points = [
+        ("Prev Close", snapshot.get("prev_day_close")),
+        ("Open", snapshot.get("open")),
+        ("Low", snapshot.get("low")),
+        ("High", snapshot.get("high")),
+        ("Last", snapshot.get("current_price")),
+    ]
+    return [
+        {"date": label, "price": round(float(price), 2)}
+        for label, price in raw_points
+        if price not in (None, 0)
+    ]
+
+
+def cboe_option_price(option):
+    bid = float(option.get("bid") or 0)
+    ask = float(option.get("ask") or 0)
+    last = float(option.get("last_trade_price") or 0)
+    theo = float(option.get("theo") or 0)
+    if last > 0:
+        return last
+    if bid > 0 and ask > 0:
+        return (bid + ask) / 2
+    return theo
+
+
+def get_market_snapshot(ticker):
+    try:
+        snapshot = fetch_cboe_snapshot(ticker)
+        return {
+            "source": "cboe",
+            "current_price": float(snapshot["current_price"]),
+            "volatility": float(snapshot.get("iv30") or 40),
+            "chart_data": cboe_chart_data(snapshot),
+            "expirations": cboe_expirations(snapshot),
+        }
+    except Exception as cboe_error:
+        print(f"Cboe failed for {ticker}: {cboe_error}")
+
+    stock = yf.Ticker(ticker)
+    hist = stock.history(period="6mo")
+    if hist.empty:
+        raise ValueError("No yfinance history")
+
+    volatility = 40.0
+    try:
+        rets = hist["Close"].pct_change().dropna()
+        volatility = rets.std() * (252**0.5) * 100
+        if math.isnan(volatility) or volatility == 0:
+            volatility = 40.0
+    except Exception:
+        volatility = 40.0
+
+    return {
+        "source": "yfinance",
+        "current_price": float(hist["Close"].iloc[-1]),
+        "volatility": volatility,
+        "chart_data": compact_chart_data(hist),
+        "expirations": list(stock.options[:8]),
+    }
+
+
+def cboe_chain(ticker, expiry):
+    snapshot = fetch_cboe_snapshot(ticker)
+    current_price = float(snapshot.get("current_price") or 0)
+    calls = []
+    puts = []
+
+    for option in snapshot.get("options", []):
+        parsed = parse_occ_option(option.get("option"))
+        if not parsed or parsed["expiry"] != expiry:
+            continue
+
+        row = {
+            "strike": round(parsed["strike"], 2),
+            "lastPrice": round(cboe_option_price(option), 2),
+            "impliedVolatility": float(option.get("iv") or 0),
+            "volume": int(option.get("volume") or 0),
+        }
+        if parsed["type"] == "call":
+            calls.append(row)
+        else:
+            puts.append(row)
+
+    def nearest_contracts(rows):
+        rows = sorted(rows, key=lambda row: abs(row["strike"] - current_price))[:40]
+        return sorted(rows, key=lambda row: row["strike"])
+
+    return {"calls": nearest_contracts(calls), "puts": nearest_contracts(puts), "source": "cboe"}
 
 
 app.add_middleware(
@@ -159,17 +308,15 @@ def get_stock_details(ticker: str):
         return cached
 
     try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="6mo")
-        if hist.empty: raise Exception("Yahoo Empty")
-
+        market = get_market_snapshot(ticker)
         return set_cached(("stock", ticker), {
-            "current_price": round(hist['Close'].iloc[-1], 2),
-            "chart_data": compact_chart_data(hist),
-            "expirations": list(stock.options[:8])
+            "current_price": round(market["current_price"], 2),
+            "chart_data": market["chart_data"],
+            "expirations": market["expirations"],
+            "source": market["source"],
         }, STOCK_CACHE_SECONDS)
-    except:
-        print(f"Yahoo failed for {ticker}. Using demo data.")
+    except Exception as e:
+        print(f"Market data failed for {ticker}. Using demo data. Error: {e}")
         return set_cached(("stock", ticker), mock_stock_data(ticker), 60)
 
 @app.get("/api/chain/{ticker}/{date}")
@@ -178,6 +325,11 @@ def get_option_chain(ticker: str, date: str):
     cached = get_cached(("chain", ticker, date))
     if cached:
         return cached
+
+    try:
+        return set_cached(("chain", ticker, date), cboe_chain(ticker, date), CHAIN_CACHE_SECONDS)
+    except Exception as cboe_error:
+        print(f"Cboe chain failed for {ticker} {date}: {cboe_error}")
 
     try:
         stock = yf.Ticker(ticker)
@@ -189,27 +341,21 @@ def get_option_chain(ticker: str, date: str):
             "puts": puts.head(40).to_dict('records')
         }
         return set_cached(("chain", ticker, date), payload, CHAIN_CACHE_SECONDS)
-    except:
+    except Exception as e:
         # Minimal mock chain
+        print(f"Option chain failed for {ticker} {date}: {e}")
         return {"calls": [], "puts": []}
 
 @app.post("/api/analyze")
 def analyze_option(request: AnalysisRequest):
     """ Feature 1: Single Option Analysis """
     try:
-        stock = yf.Ticker(request.ticker)
-        hist = stock.history(period="1mo")
-        if hist.empty: raise Exception("Empty")
-        
-        current_price = hist['Close'].iloc[-1]
+        market = get_market_snapshot(request.ticker)
+        current_price = market["current_price"]
         days = days_to_expiry(request.expiry)
-        
-        # Calculate Volatility or default to 40%
-        try:
-            rets = hist['Close'].pct_change().dropna()
-            vol = rets.std() * (252**0.5) * 100
-            if math.isnan(vol) or vol == 0: vol = 40.0
-        except: vol = 40.0
+        vol = market["volatility"]
+        if math.isnan(vol) or vol == 0:
+            vol = 40.0
 
         c = mibian.BS([current_price, request.strike, 4.5, days], vol)
         model_price = c.callPrice if request.option_type == 'call' else c.putPrice
@@ -223,20 +369,23 @@ def analyze_option(request: AnalysisRequest):
 
         return {
             "underlying_price": round(current_price, 2),
+            "market_price": round(request.market_price, 2),
             "model_price": round(model_price, 2),
             "verdict": verdict,
             "percent_mispricing": round(percent_diff, 1),
             "volatility_used": round(vol, 2),
             "greeks": {
-                "delta": round(c.callDelta if c.callDelta else 0.5, 3),
-                "theta": round(c.callTheta if c.callTheta else -0.1, 3),
+                "delta": round((c.callDelta if request.option_type == 'call' else c.putDelta) or 0.5, 3),
+                "theta": round((c.callTheta if request.option_type == 'call' else c.putTheta) or -0.1, 3),
                 "vega": round(c.vega if c.vega else 0.2, 3),
                 "rho": 0.05
-            }
+            },
+            "source": market["source"],
         }
-    except:
+    except Exception as e:
+        print(f"Analysis failed for {request.ticker}. Using demo data. Error: {e}")
         return {
-            "underlying_price": 100, "model_price": 5.50, "verdict": "FAIRLY PRICED",
+            "underlying_price": 100, "market_price": round(request.market_price, 2), "model_price": 5.50, "verdict": "FAIRLY PRICED",
             "percent_mispricing": 0, "volatility_used": 40,
             "greeks": {"delta": 0.5, "theta": -0.1, "vega": 0.2, "rho": 0.05}
         }
@@ -245,17 +394,17 @@ def analyze_option(request: AnalysisRequest):
 def get_greeks_profile(request: AnalysisRequest):
     """ Feature 2: Greeks Simulation """
     try:
-        stock = yf.Ticker(request.ticker)
-        hist = stock.history(period="1mo")
-        if hist.empty: raise Exception("Empty")
-        
-        current_price = hist['Close'].iloc[-1]
+        market = get_market_snapshot(request.ticker)
+        current_price = market["current_price"]
         days = days_to_expiry(request.expiry)
+        vol = market["volatility"]
+        if math.isnan(vol) or vol == 0:
+            vol = 40.0
         
         points = []
         for p in [current_price * (0.8 + i*0.02) for i in range(21)]:
             try:
-                c = mibian.BS([p, request.strike, 4.5, days], 40)
+                c = mibian.BS([p, request.strike, 4.5, days], vol)
                 points.append({
                     "price": round(p, 2), 
                     "delta": round(c.callDelta, 3), 
@@ -265,8 +414,9 @@ def get_greeks_profile(request: AnalysisRequest):
             except: pass
             
         if not points: raise Exception("No points")
-        return {"current_price": round(current_price, 2), "simulation": points}
-    except:
+        return {"current_price": round(current_price, 2), "simulation": points, "source": market["source"]}
+    except Exception as e:
+        print(f"Greeks profile failed for {request.ticker}. Using demo data. Error: {e}")
         return {"current_price": 100, "simulation": mock_greeks(100)}
 
 @app.post("/api/vol-sim")
