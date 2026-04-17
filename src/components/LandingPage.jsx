@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { ArrowRight, Lock, User } from 'lucide-react';
 
 const LandingPage = ({ onLogin }) => {
@@ -32,10 +31,8 @@ const LandingPage = ({ onLogin }) => {
       <div className="flex-1 flex flex-col items-center justify-center w-full max-w-lg px-6 relative z-10">
         
         {/* Title Section */}
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }} 
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-10"
+        <div
+          className="text-center mb-10 animate-in fade-in slide-in-from-top-4 duration-500"
         >
           <div className="inline-block px-3 py-1 mb-4 text-xs font-mono text-blue-400 border border-blue-900/50 rounded-full bg-blue-900/10">
             INSTITUTIONAL GRADE TERMINAL
@@ -44,14 +41,11 @@ const LandingPage = ({ onLogin }) => {
             Drawdown<span className="text-blue-500">Labs</span>
           </h1>
           <p className="text-slate-400 text-lg">Risk Visualization & Strategy Engine</p>
-        </motion.div>
+        </div>
 
         {/* Login Card */}
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1 }}
-          className="w-full bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50"
+        <div
+          className="w-full bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-8 rounded-2xl shadow-2xl shadow-black/50 animate-in fade-in zoom-in-95 duration-500"
         >
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
@@ -95,15 +89,12 @@ const LandingPage = ({ onLogin }) => {
               No account? <span className="text-blue-400 underline decoration-blue-400/30 underline-offset-4">Create Account</span>
             </button>
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* Footer Links */}
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-        className="py-8 z-10"
+      <div
+        className="py-8 z-10 animate-in fade-in duration-700"
       >
         <div className="flex items-center gap-6 text-sm text-slate-500 font-medium">
           <Link to="/about" className="hover:text-blue-400 transition-colors">About Us</Link>
@@ -112,7 +103,7 @@ const LandingPage = ({ onLogin }) => {
           <span className="text-slate-700">|</span>
           <Link to="/contact" className="hover:text-blue-400 transition-colors">Contact Us</Link>
         </div>
-      </motion.div>
+      </div>
 
     </div>
   );

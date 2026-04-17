@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Grid, Calendar, TrendingUp, Info, X, MousePointer, ArrowRight } from 'lucide-react';
+import { API_BASE } from "../config"; 
 
 const RiskHeatmap = () => {
   const [data, setData] = useState(null);
@@ -14,18 +15,10 @@ const RiskHeatmap = () => {
     volatility: 20
   });
 
-  // Debounce: Auto-run simulation when user stops typing
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchData();
-    }, 500); 
-    return () => clearTimeout(timer);
-  }, [inputs]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/heatmap', {
+      const res = await fetch(`${API_BASE}/heatmap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -40,7 +33,15 @@ const RiskHeatmap = () => {
       setData(json);
     } catch (e) { console.error(e); }
     setLoading(false);
-  };
+  }, [inputs]);
+
+  // Debounce: Auto-run simulation when user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchData();
+    }, 500); 
+    return () => clearTimeout(timer);
+  }, [fetchData]);
 
   const handleInput = (field, value) => {
     setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));

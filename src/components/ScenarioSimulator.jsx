@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Play, TrendingUp, TrendingDown, Info, X, DollarSign, AlertTriangle, Lightbulb } from 'lucide-react';
+import { API_BASE } from "../config"; 
 
 const ScenarioLab = () => {
   // --- STATE ---
@@ -20,20 +21,10 @@ const ScenarioLab = () => {
   // --- TICKER LIST ---
   const popularTickers = ["SPY", "QQQ", "IWM", "NVDA", "TSLA", "AAPL", "AMD", "MSFT", "AMZN"];
 
-  // --- LIVE SIMULATION ENGINE ---
-  // This runs every time 'inputs' changes (Debounced for performance)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      runSimulation();
-    }, 300); // 300ms delay to prevent flickering while typing
-
-    return () => clearTimeout(timer);
-  }, [inputs]);
-
-  const runSimulation = async () => {
+  const runSimulation = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/scenario', {
+      const res = await fetch(`${API_BASE}/scenario`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -51,7 +42,17 @@ const ScenarioLab = () => {
       console.error("Sim error", e);
     }
     setLoading(false);
-  };
+  }, [inputs]);
+
+  // --- LIVE SIMULATION ENGINE ---
+  // This runs every time 'inputs' changes (Debounced for performance)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      runSimulation();
+    }, 300); // 300ms delay to prevent flickering while typing
+
+    return () => clearTimeout(timer);
+  }, [runSimulation]);
 
   // --- HANDLERS ---
   const update = (field, value) => {

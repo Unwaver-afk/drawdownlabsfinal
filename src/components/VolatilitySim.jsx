@@ -4,6 +4,7 @@ import {
   CartesianGrid, ReferenceLine 
 } from 'recharts';
 import { Zap, Activity, PlayCircle, AlertTriangle, Calendar } from 'lucide-react';
+import { API_BASE } from "../config"; 
 
 const VolatilitySim = () => {
   const [ticker, setTicker] = useState('TSLA');
@@ -18,15 +19,15 @@ const VolatilitySim = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const res = await fetch(`/api/stock/${ticker}`);
+        const res = await fetch(`${API_BASE}/stock/${ticker}`);
         if (!res.ok) return;
         const data = await res.json();
         
         if (data.current_price) {
-          if (!strike) setStrike(Math.floor(data.current_price));
+          setStrike(prev => prev || Math.floor(data.current_price));
           if (data.expirations && data.expirations.length > 0) {
             setAvailableExpiries(data.expirations);
-            if (!expiry) setExpiry(data.expirations[0]);
+            setExpiry(prev => prev || data.expirations[0]);
           }
         }
       } catch (e) {
@@ -43,18 +44,26 @@ const VolatilitySim = () => {
     try {
       if (!ticker || !strike || !expiry) throw new Error("Missing Inputs");
 
-      const res = await fetch('/api/vol-sim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ticker, strike: parseFloat(strike), expiry, option_type: 'call', market_price: 0
-        })
-      });
+      const res = await fetch(`${API_BASE}/vol-sim`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    ticker,
+    strike: parseFloat(strike),
+    expiry,
+    option_type: 'call',
+    market_price: 0
+  })
+});
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Server Error");
-      
-      setSimData(data);
+if (!res.ok) {
+  const text = await res.text();
+  throw new Error(text || "Server Error");
+}
+
+const data = await res.json();
+setSimData(data);
+
     } catch (err) {
       setError(err.message);
     }

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, TrendingDown, Play, Activity } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { API_BASE } from "../config"; 
 
 const HedgingSimulator = () => {
   const [loading, setLoading] = useState(false);
@@ -11,21 +12,37 @@ const HedgingSimulator = () => {
     shares: 100
   });
 
-  useEffect(() => { runSimulation(); }, []);
+ const runSimulation = useCallback(async () => {
+  setLoading(true);
 
-  const runSimulation = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/hedging-calc', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker: "SPY", market_price: inputs.price, shares: inputs.shares })
-      });
-      const json = await res.json();
-      setData(json);
-    } catch (e) { console.error(e); }
+  try {
+    const res = await fetch(`${API_BASE}/hedging-calc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ticker: "SPY",
+        market_price: inputs.price,
+        shares: inputs.shares
+      })
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || "Server Error");
+    }
+
+    const json = await res.json();
+    setData(json);
+
+  } catch (e) {
+    console.error("Hedging sim failed:", e);
+  } finally {
     setLoading(false);
-  };
+  }
+}, [inputs.price, inputs.shares]);
+
+  useEffect(() => { runSimulation(); }, [runSimulation]);
+
 
   const handleInput = (field, value) => {
     setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));

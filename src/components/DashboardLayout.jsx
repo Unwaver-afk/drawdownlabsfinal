@@ -1,24 +1,24 @@
-import LivePricing from './LivePricing';
-import GreeksVisualizer from './GreeksVisualizer';
-import VolatilitySim from './VolatilitySim';
-import HedgingDemo from './HedgingDemo';
-import ScenarioSimulator from './ScenarioSimulator';
-import RiskHeatmap from './RiskHeatmap';
-import FinancialDictionary from './FinancialDictionary';
 import ChatWidget from './ChatWidget';
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
   LayoutDashboard, TrendingUp, Activity, ShieldCheck, 
   Settings, LogOut, BookOpen, Menu, X, Zap, UserCircle
 } from 'lucide-react';
- 
-const FeaturePlaceholder = ({ title }) => (
-  <div className="p-8">
-    <h2 className="text-3xl font-bold text-white mb-4">{title}</h2>
-    <div className="p-10 border-2 border-dashed border-slate-700 rounded-xl flex items-center justify-center text-slate-500 bg-slate-900/50">
-      Feature Module Loading...
+
+const LivePricing = lazy(() => import('./LivePricing'));
+const GreeksVisualizer = lazy(() => import('./GreeksVisualizer'));
+const VolatilitySim = lazy(() => import('./VolatilitySim'));
+const HedgingDemo = lazy(() => import('./HedgingDemo'));
+const ScenarioSimulator = lazy(() => import('./ScenarioSimulator'));
+const RiskHeatmap = lazy(() => import('./RiskHeatmap'));
+const FinancialDictionary = lazy(() => import('./FinancialDictionary'));
+
+const PageLoader = () => (
+  <div className="h-full min-h-[320px] flex items-center justify-center text-slate-500">
+    <div className="flex items-center gap-3">
+      <Activity className="animate-spin text-blue-400" size={20} />
+      <span>Loading workspace...</span>
     </div>
   </div>
 );
@@ -28,13 +28,7 @@ const ProfileModal = ({ user, onClose }) => {
   if (!user) return null;
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      {/* Modal Card */}
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.9 }}
-        className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl p-6 shadow-2xl relative"
-      >
+      <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
         <button 
           onClick={onClose} 
           className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
@@ -72,7 +66,7 @@ const ProfileModal = ({ user, onClose }) => {
         <div className="mt-6 text-center text-xs text-slate-600">
           User ID: {user.account} • Session Secure
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 };
@@ -98,13 +92,8 @@ const DashboardLayout = ({ user, onLogout }) => {
     <div className="flex h-screen bg-slate-950 overflow-hidden relative">
       
       {/* --- Sidebar --- */}
-      <motion.div 
-  animate={{ width: isOpen ? 260 : 80 }}
-  transition={{
-    duration: 0.45,
-    ease: [0.4, 0.0, 0.2, 1], 
-    ease: 'easeInOut'// Material-style smooth easing
-  }}
+      <div 
+  style={{ width: isOpen ? 260 : 80 }}
   className="
     h-[calc(100%-2rem)]
     m-4
@@ -117,24 +106,20 @@ const DashboardLayout = ({ user, onLogout }) => {
     shadow-xl shadow-blue-900/30
     ring-1 ring-blue-500/10
     will-change-[width]
+    transition-[width]
+    duration-300
+    ease-in-out
   "
 >
 
 
         {/* Logo Area */}
         <div className="p-5 flex items-center justify-between h-20">
-          <AnimatePresence mode='wait'>
-            {isOpen && (
-              <motion.span 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                exit={{ opacity: 0 }}
-                className="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400"
-              >
-                Drawdown Labs
-              </motion.span>
-            )}
-          </AnimatePresence>
+          {isOpen && (
+            <span className="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+              Drawdown Labs
+            </span>
+          )}
           <button 
             onClick={() => setIsOpen(!isOpen)} 
             className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"
@@ -155,33 +140,18 @@ const DashboardLayout = ({ user, onLogout }) => {
                   flex items-center gap-4 px-3 py-3 rounded-xl transition-all group relative overflow-hidden
                   ${isActive ? 'bg-blue-600/10 text-blue-400 border border-blue-600/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
                 `}>
-                  <AnimatePresence>
-  {isActive && (
-    <motion.div
-      layoutId="activeIndicator"
-      className="absolute left-0 top-2 bottom-2 w-1 bg-blue-500 rounded-l-xl"
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-    />
-  )}
-</AnimatePresence>
+                  {isActive && (
+                    <div className="absolute left-0 top-2 bottom-2 w-1 bg-blue-500 rounded-l-xl" />
+                  )}
 
                   <Icon size={22} className={isActive ? 'text-blue-400' : 'group-hover:text-white transition-colors'} />
                   
                   {/* Text Label (Only shows when open) */}
-                  <AnimatePresence>
-  {isOpen && (
-    <motion.span
-      key="label"
-      initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -6 }}
-      transition={{ duration: 0.2 }}
-      className="text-sm font-medium whitespace-nowrap"
-    >
-      {item.label}
-    </motion.span>
-  )}
-</AnimatePresence>
+                  {isOpen && (
+                    <span className="text-sm font-medium whitespace-nowrap">
+                      {item.label}
+                    </span>
+                  )}
 
                 </div>
               </Link>
@@ -199,19 +169,21 @@ const DashboardLayout = ({ user, onLogout }) => {
             {isOpen && <span className="text-sm font-medium">Log out</span>}
           </button>
         </div>
-      </motion.div>
+      </div>
 
       {/* --- Main Content Area --- */}
       <div className="flex-1 overflow-auto relative bg-slate-950">
-        <Routes>
-          <Route path="/" element={<LivePricing />} />
-          <Route path="/greeks" element={<GreeksVisualizer />} />
-          <Route path="/volatility" element={<VolatilitySim />} />
-          <Route path="/hedging" element={<HedgingDemo />} />
-          <Route path="/scenario" element={<ScenarioSimulator />} />
-          <Route path="/risk" element={<RiskHeatmap />} />
-          <Route path="/dictionary" element={<FinancialDictionary />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<LivePricing />} />
+            <Route path="/greeks" element={<GreeksVisualizer />} />
+            <Route path="/volatility" element={<VolatilitySim />} />
+            <Route path="/hedging" element={<HedgingDemo />} />
+            <Route path="/scenario" element={<ScenarioSimulator />} />
+            <Route path="/risk" element={<RiskHeatmap />} />
+            <Route path="/dictionary" element={<FinancialDictionary />} />
+          </Routes>
+        </Suspense>
 
         {/* Floating Profile Button (Bottom Right) */}
         <button 
@@ -228,15 +200,12 @@ const DashboardLayout = ({ user, onLogout }) => {
       </div>
 
       {/* --- Profile Modal Overlay --- */}
-      <AnimatePresence>
-        {showProfile && (
-          <ProfileModal user={user} onClose={() => setShowProfile(false)} />
-        )}
-      </AnimatePresence>
+      {showProfile && (
+        <ProfileModal user={user} onClose={() => setShowProfile(false)} />
+      )}
       <ChatWidget />
     </div>
   );
 };
 
 export default DashboardLayout;
-

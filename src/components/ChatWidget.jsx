@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MessageSquare, X, Send, Bot, Sparkles } from 'lucide-react';
+import { API_BASE } from "../config"; 
 
 const ChatWidget = () => {
   const location = useLocation(); // Detects which page the user is on
@@ -43,7 +44,7 @@ const ChatWidget = () => {
 
     try {
       // 2. Send to Backend (Port 8000)
-      const res = await fetch('/api/chat', {
+      const res = await fetch(`${API_BASE}/chat`,{
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

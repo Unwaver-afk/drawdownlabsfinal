@@ -4,21 +4,52 @@ from pydantic import BaseModel
 import yfinance as yf
 import mibian
 import math
-import random
+import os
+import time
 from datetime import datetime, timedelta
 import requests
-import math
 
 app = FastAPI()
+cache = {}
 
-# --- CONFIGURATION ---
+STOCK_CACHE_SECONDS = 300
+CHAIN_CACHE_SECONDS = 600
+
+
+def get_cached(key):
+    item = cache.get(key)
+    if not item:
+        return None
+    expires_at, value = item
+    if expires_at < time.time():
+        cache.pop(key, None)
+        return None
+    return value
+
+
+def set_cached(key, value, ttl):
+    cache[key] = (time.time() + ttl, value)
+    return value
+
+
+def compact_chart_data(hist, max_points=90):
+    if len(hist) > max_points:
+        step = max(1, len(hist) // max_points)
+        hist = hist.iloc[::step]
+    return [
+        {"date": i.strftime("%Y-%m-%d"), "price": round(float(r["Close"]), 2)}
+        for i, r in hist.iterrows()
+    ]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # restrict later
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # --- DATA MODELS ---
 class AnalysisRequest(BaseModel):
@@ -107,30 +138,42 @@ def read_root():
 
 @app.get("/api/stock/{ticker}")
 def get_stock_details(ticker: str):
+    ticker = ticker.upper().strip()
+    cached = get_cached(("stock", ticker))
+    if cached:
+        return cached
+
     try:
         stock = yf.Ticker(ticker)
-        hist = stock.history(period="1y")
+        hist = stock.history(period="6mo")
         if hist.empty: raise Exception("Yahoo Empty")
 
-        chart_data = [{"date": i.strftime('%Y-%m-%d'), "price": r['Close']} for i, r in hist.iterrows()]
-        return {
+        return set_cached(("stock", ticker), {
             "current_price": round(hist['Close'].iloc[-1], 2),
-            "chart_data": chart_data,
-            "expirations": stock.options
-        }
+            "chart_data": compact_chart_data(hist),
+            "expirations": list(stock.options[:8])
+        }, STOCK_CACHE_SECONDS)
     except:
-        print(f"⚠️ Yahoo Failed for {ticker}. Using Demo Data.")
-        return mock_stock_data(ticker)
+        print(f"Yahoo failed for {ticker}. Using demo data.")
+        return set_cached(("stock", ticker), mock_stock_data(ticker), 60)
 
 @app.get("/api/chain/{ticker}/{date}")
 def get_option_chain(ticker: str, date: str):
+    ticker = ticker.upper().strip()
+    cached = get_cached(("chain", ticker, date))
+    if cached:
+        return cached
+
     try:
         stock = yf.Ticker(ticker)
         chain = stock.option_chain(date)
-        return {
-            "calls": chain.calls[['strike', 'lastPrice', 'impliedVolatility', 'volume']].fillna(0).to_dict('records'),
-            "puts": chain.puts[['strike', 'lastPrice', 'impliedVolatility', 'volume']].fillna(0).to_dict('records')
+        calls = chain.calls[['strike', 'lastPrice', 'impliedVolatility', 'volume']].fillna(0)
+        puts = chain.puts[['strike', 'lastPrice', 'impliedVolatility', 'volume']].fillna(0)
+        payload = {
+            "calls": calls.head(40).to_dict('records'),
+            "puts": puts.head(40).to_dict('records')
         }
+        return set_cached(("chain", ticker, date), payload, CHAIN_CACHE_SECONDS)
     except:
         # Minimal mock chain
         return {"calls": [], "puts": []}
@@ -449,8 +492,8 @@ def get_heatmap(request: AnalysisRequest):
     }
 @app.post("/api/chat")
 def chat_with_ai(request: dict):
-    # 1. API Key (Make sure no spaces are around it)
-    API_KEY = "AIzaSyBB88s-lPwdddY24PkKQMlWHwPgzLYfayk" 
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    suggestions = ["What is on my screen?", "Explain this feature"]
     
     # 2. Setup
     user_message = request.get("message", "")
@@ -471,18 +514,18 @@ def chat_with_ai(request: dict):
     
 
     # 4. The Request (Using Gemini 1.5 Flash - It is stable and fast)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={API_KEY}"  
+    if not api_key:
+        return {"reply": "AI chat is not configured yet.", "suggestions": suggestions}
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     payload = {
         "contents": [{
             "parts": [{"text": f"{system_prompt}\n\nUser Question: {user_message}"}]
         }]
     }
-    
-    # 5. Fallback Suggestions
-    suggestions = ["What is on my screen?", "Explain this feature"]
 
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=payload, timeout=8)
         data = response.json()
 
         # --- SAFETY CHECK: Did Google send an error? ---

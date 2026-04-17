@@ -4,6 +4,7 @@ import {
   ReferenceLine, CartesianGrid 
 } from 'recharts';
 import { Brain, Activity, PlayCircle, AlertTriangle, Calendar } from 'lucide-react';
+import { API_BASE } from "../config"; 
 
 const GreeksVisualizer = () => {
   const [ticker, setTicker] = useState('SPY');
@@ -18,19 +19,19 @@ const GreeksVisualizer = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const res = await fetch(`/api/stock/${ticker}`);
+        const res = await fetch(`${API_BASE}/stock/${ticker}`);
         if (!res.ok) return; 
         const data = await res.json();
         
         if (data.current_price) {
           // Auto-set strike if empty
-          if (!strike) setStrike(Math.floor(data.current_price));
+          setStrike(prev => prev || Math.floor(data.current_price));
           
           // Update Expiry List
           if (data.expirations && data.expirations.length > 0) {
             setAvailableExpiries(data.expirations);
             // Default to the first expiry if none selected
-            if (!expiry) setExpiry(data.expirations[0]);
+            setExpiry(prev => prev || data.expirations[0]);
           }
         }
       } catch (e) {
@@ -43,45 +44,45 @@ const GreeksVisualizer = () => {
 
   // 2. The Simulation Function
   const runSimulation = async () => {
-    setLoading(true);
-    setError('');
-    setSimData(null);
+  setLoading(true);
+  setError('');
+  setSimData(null);
 
-    try {
-      // VALIDATION: Ensure we have all 3 needed values
-      if (!ticker || !strike || !expiry) {
-        throw new Error("Missing inputs. Please check Ticker, Strike, and Expiry.");
-      }
-
-      const payload = {
-        ticker, 
-        strike: parseFloat(strike), 
-        expiry: expiry, 
-        option_type: 'call', 
-        market_price: 0
-      };
-
-      console.log("Sending Payload:", payload); // Debugging log
-
-      const res = await fetch('/api/greeks-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.detail || "Server Error");
-      }
-      
-      setSimData(data);
-    } catch (err) {
-      console.error(err);
-      setError(err.message);
+  try {
+    if (!ticker || !strike || !expiry) {
+      throw new Error("Missing inputs. Please check Ticker, Strike, and Expiry.");
     }
+
+    const payload = {
+      ticker,
+      strike: parseFloat(strike),
+      expiry,
+      option_type: 'call',
+      market_price: 0
+    };
+
+    const res = await fetch(`${API_BASE}/greeks-profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || "Server Error");
+    }
+
+    const data = await res.json();
+    setSimData(data);
+
+  } catch (err) {
+    console.error(err);
+    setError(err.message);
+  } finally {
     setLoading(false);
-  };
+  }
+};
+
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8 pb-20">

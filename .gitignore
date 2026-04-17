@@ -37,3 +37,4 @@ __pycache__/
 # Ignore System files
 .DS_Store
 .idx/
+.firebase/

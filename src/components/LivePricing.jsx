@@ -3,6 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { Search, TrendingUp, Activity, AlertCircle, ChevronDown } from 'lucide-react';
+import { API_BASE } from "../config"; 
 
 // --- 1. Top 12 Major Companies Data ---
 const POPULAR_STOCKS = [
@@ -30,6 +31,8 @@ const LivePricing = () => {
   const [loading, setLoading] = useState(false);
   
   const dropdownRef = useRef(null); // To detect clicks outside
+  const stockCache = useRef(new Map());
+  const chainCache = useRef(new Map());
 
   // Close dropdown if clicking outside
   useEffect(() => {
@@ -44,63 +47,94 @@ const LivePricing = () => {
 
   // 1. Fetch Basic Stock Data
   const fetchStock = async (overrideTicker) => {
-    const symbol = overrideTicker || ticker; // Use override if provided (for clicks)
+    const symbol = (overrideTicker || ticker).trim().toUpperCase(); // Use override if provided (for clicks)
     if (!symbol) return;
     
+    setTicker(symbol);
     setLoading(true);
     setStockData(null);
     setChain(null);
+    setAnalysis(null);
     setShowDropdown(false); // Close list on search
 
     try {
-      const res = await fetch(`/api/stock/${symbol}`);
+      if (stockCache.current.has(symbol)) {
+        const cached = stockCache.current.get(symbol);
+        setStockData(cached);
+        setSelectedExpiry(cached.expirations?.[0] || '');
+        return;
+      }
+
+      const res = await fetch(`${API_BASE}/stock/${symbol}`);
       if (!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
+      stockCache.current.set(symbol, data);
       setStockData(data);
       if (data.expirations && data.expirations.length > 0) {
         setSelectedExpiry(data.expirations[0]);
       }
     } catch (err) {
       console.error("Error:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // 2. Fetch Option Chain
   useEffect(() => {
     if (selectedExpiry && ticker && stockData) {
-      fetch(`/api/chain/${ticker}/${selectedExpiry}`)
+      const cacheKey = `${ticker}:${selectedExpiry}`;
+      if (chainCache.current.has(cacheKey)) {
+        setChain(chainCache.current.get(cacheKey));
+        return;
+      }
+
+      setChain(null);
+      fetch(`${API_BASE}/chain/${ticker}/${selectedExpiry}`)
         .then(res => res.json())
         .then(data => {
-           if (data && data.calls) setChain(data);
+           if (data && data.calls) {
+            chainCache.current.set(cacheKey, data);
+            setChain(data);
+           }
            else setChain(null);
         })
         .catch(err => console.error("Chain Error:", err));
     }
-  }, [selectedExpiry]); 
+  }, [selectedExpiry, ticker, stockData]); 
 
   // 3. Analyze Specific Option
   const handleAnalyze = async (strike, price, type) => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ticker,
-          strike,
-          expiry: selectedExpiry,
-          option_type: type,
-          market_price: price
-        })
-      });
-      const result = await res.json();
-      setAnalysis(result);
-    } catch (err) {
-      console.error("Analysis Error:", err);
+  setLoading(true);
+
+  try {
+    const res = await fetch(`${API_BASE}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ticker,
+        strike,
+        expiry: selectedExpiry,
+        option_type: type,
+        market_price: price
+      })
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || "Analysis failed");
     }
+
+    const result = await res.json();
+    setAnalysis(result);
+
+  } catch (err) {
+    console.error("Analysis Error:", err);
+  } finally {
     setLoading(false);
-  };
+  }
+};
+
 
   // Helper: Handle clicking a suggestion
   const handleSelectStock = (item) => {
