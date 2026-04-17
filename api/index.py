@@ -510,29 +510,20 @@ def chat_with_ai(request: dict):
     api_key = os.getenv("GEMINI_API_KEY", "")
     suggestions = ["What is on my screen?", "Explain this feature"]
     
-    # 2. Setup
     user_message = request.get("message", "")
     screen_context = request.get("context", "General Dashboard")
     
-    # 3. Prompt Engineering
     system_prompt = (
-        
-    f"Hello! I am Doody, your friendly financial manager at Drawdown Labs 😊 "
-    f"Ask anything on your mind . "
-    "Keep answers very simple, friendly, and easy to understand for beginners. "
-    "Be helpful, calm, and supportive. "
-    "Keep responses short (under 50 words). "
-    "Start conversations with: "
-    "'Hello, I am Doody, your financial manager. How can I help you today?'"
-     )
+        "You are Doody, the friendly financial manager at Drawdown Labs. "
+        "Keep answers simple, friendly, calm, and beginner-friendly. "
+        "Keep responses under 50 words. "
+        f"The user is currently viewing: {screen_context}."
+    )
 
-    
-
-    # 4. The Request (Using Gemini 1.5 Flash - It is stable and fast)
     if not api_key:
         return {"reply": "AI chat is not configured yet.", "suggestions": suggestions}
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]
     payload = {
         "contents": [{
             "parts": [{"text": f"{system_prompt}\n\nUser Question: {user_message}"}]
@@ -540,29 +531,30 @@ def chat_with_ai(request: dict):
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=8)
-        data = response.json()
+        last_error = "No Gemini model responded."
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            response = requests.post(url, json=payload, timeout=8)
+            data = response.json()
 
-        # --- SAFETY CHECK: Did Google send an error? ---
-        if "error" in data:
-            error_msg = data['error']['message']
-            print(f"🔴 GOOGLE ERROR: {error_msg}")
-            return {
-                "reply": f"Setup Error: {error_msg}. (Check your API Key enabled services).",
-                "suggestions": suggestions
-            }
+            if "candidates" in data:
+                ai_reply = data['candidates'][0]['content']['parts'][0]['text']
+                return {"reply": ai_reply, "suggestions": suggestions}
+
+            if "error" in data:
+                last_error = data["error"].get("message", "Gemini request failed.")
+                print(f"Gemini model {model} failed: {last_error}")
+                continue
         
-        # --- SUCCESS ---
-        if "candidates" in data:
-            ai_reply = data['candidates'][0]['content']['parts'][0]['text']
-            return {"reply": ai_reply, "suggestions": suggestions}
-            
-        # --- UNKNOWN RESPONSE ---
-        print(f"🔴 WEIRD RESPONSE: {data}")
-        return {"reply": "I'm having trouble thinking. Try again.", "suggestions": suggestions}
+            print(f"Unexpected Gemini response from {model}: {data}")
+
+        return {
+            "reply": f"Setup Error: {last_error}. Check your Gemini API key and enabled services.",
+            "suggestions": suggestions
+        }
 
     except Exception as e:
-        print(f"🔴 PYTHON CRASH: {e}")
+        print(f"Python chat error: {e}")
         return {"reply": "Connection failed.", "suggestions": suggestions}
 
 if __name__ == "__main__":
