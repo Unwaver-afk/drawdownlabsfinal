@@ -4,7 +4,7 @@ import {
   ReferenceLine, CartesianGrid 
 } from 'recharts';
 import { Brain, Activity, PlayCircle, AlertTriangle, Calendar } from 'lucide-react';
-import { API_BASE } from "../config"; 
+import { API_BASE } from "../../config"; 
 
 const GreeksVisualizer = () => {
   const [ticker, setTicker] = useState('SPY');

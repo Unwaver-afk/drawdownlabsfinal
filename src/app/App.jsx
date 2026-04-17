@@ -1,10 +1,10 @@
 import React, { Suspense, lazy, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
-const LandingPage = lazy(() => import('./components/LandingPage'));
-const SignupPage = lazy(() => import('./components/SignupPage'));
-const AboutUs = lazy(() => import('./components/AboutUs'));
-const DashboardLayout = lazy(() => import('./components/DashboardLayout'));
+const LandingPage = lazy(() => import('../pages/LandingPage'));
+const SignupPage = lazy(() => import('../pages/SignupPage'));
+const AboutUs = lazy(() => import('../pages/AboutUs'));
+const DashboardLayout = lazy(() => import('../components/layout/DashboardLayout'));
 
 const AppLoader = () => (
   <div className="min-h-screen bg-slate-950 text-slate-400 flex items-center justify-center">

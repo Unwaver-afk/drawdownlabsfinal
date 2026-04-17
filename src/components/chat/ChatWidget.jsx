@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MessageSquare, X, Send, Bot, Sparkles } from 'lucide-react';
-import { API_BASE } from "../config"; 
+import { API_BASE } from "../../config"; 
 
 const ChatWidget = () => {
   const location = useLocation(); // Detects which page the user is on

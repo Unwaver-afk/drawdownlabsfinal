@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { Play, TrendingUp, TrendingDown, Info, X, DollarSign, AlertTriangle, Lightbulb } from 'lucide-react';
-import { API_BASE } from "../config"; 
+import { API_BASE } from "../../config"; 
 
 const ScenarioLab = () => {
   // --- STATE ---

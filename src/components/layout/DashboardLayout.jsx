@@ -1,4 +1,4 @@
-import ChatWidget from './ChatWidget';
+import ChatWidget from '../chat/ChatWidget';
 import React, { Suspense, lazy, useState } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { 
@@ -6,13 +6,13 @@ import {
   Settings, LogOut, BookOpen, Menu, X, Zap, UserCircle
 } from 'lucide-react';
 
-const LivePricing = lazy(() => import('./LivePricing'));
-const GreeksVisualizer = lazy(() => import('./GreeksVisualizer'));
-const VolatilitySim = lazy(() => import('./VolatilitySim'));
-const HedgingDemo = lazy(() => import('./HedgingDemo'));
-const ScenarioSimulator = lazy(() => import('./ScenarioSimulator'));
-const RiskHeatmap = lazy(() => import('./RiskHeatmap'));
-const FinancialDictionary = lazy(() => import('./FinancialDictionary'));
+const LivePricing = lazy(() => import('../../features/pricing/LivePricing'));
+const GreeksVisualizer = lazy(() => import('../../features/simulators/GreeksVisualizer'));
+const VolatilitySim = lazy(() => import('../../features/simulators/VolatilitySim'));
+const HedgingDemo = lazy(() => import('../../features/simulators/HedgingDemo'));
+const ScenarioSimulator = lazy(() => import('../../features/simulators/ScenarioSimulator'));
+const RiskHeatmap = lazy(() => import('../../features/simulators/RiskHeatmap'));
+const FinancialDictionary = lazy(() => import('../../features/education/FinancialDictionary'));
 
 const PageLoader = () => (
   <div className="h-full min-h-[320px] flex items-center justify-center text-slate-500">

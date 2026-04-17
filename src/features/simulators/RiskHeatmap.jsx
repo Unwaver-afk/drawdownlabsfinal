@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { Grid, Calendar, TrendingUp, Info, X, MousePointer, ArrowRight } from 'lucide-react';
-import { API_BASE } from "../config"; 
+import { API_BASE } from "../../config"; 
 
 const RiskHeatmap = () => {
   const [data, setData] = useState(null);

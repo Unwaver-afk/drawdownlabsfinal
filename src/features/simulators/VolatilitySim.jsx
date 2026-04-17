@@ -4,7 +4,7 @@ import {
   CartesianGrid, ReferenceLine 
 } from 'recharts';
 import { Zap, Activity, PlayCircle, AlertTriangle, Calendar } from 'lucide-react';
-import { API_BASE } from "../config"; 
+import { API_BASE } from "../../config"; 
 
 const VolatilitySim = () => {
   const [ticker, setTicker] = useState('TSLA');

@@ -3,7 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { Search, TrendingUp, Activity, AlertCircle, ChevronDown } from 'lucide-react';
-import { API_BASE } from "../config"; 
+import { API_BASE } from "../../config"; 
 
 // --- 1. Top 12 Major Companies Data ---
 const POPULAR_STOCKS = [

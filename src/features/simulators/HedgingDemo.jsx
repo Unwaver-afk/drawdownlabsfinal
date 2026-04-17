@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, TrendingDown, Play, Activity } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { API_BASE } from "../config"; 
+import { API_BASE } from "../../config"; 
 
 const HedgingSimulator = () => {
   const [loading, setLoading] = useState(false);
