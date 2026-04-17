@@ -16,6 +16,21 @@ STOCK_CACHE_SECONDS = 300
 CHAIN_CACHE_SECONDS = 600
 
 
+def load_local_env(path=".env"):
+    if not os.path.exists(path):
+        return
+    with open(path) as env_file:
+        for line in env_file:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+load_local_env()
+
+
 def get_cached(key):
     item = cache.get(key)
     if not item:
